@@ -1,1 +1,321 @@
+#include <NewPing.h>            //Ultrasonic sensor function library.
+#include <Servo.h>              //Servo motor library.
+#include <LiquidCrystal_I2C.h>  // LiquidCrystal library
+#include <Wire.h>
 
+//our L298N control pins
+const int motorPin1 = 4;
+const int motorPin2 = 5;
+const int motorPin3 = 6;
+const int motorPin4 = 7;
+//#define motor_aEnable 5
+//#define motor_bEnable 6
+//#define OB_range 30
+
+//button for LC
+const int buttonPin = 2;
+LiquidCrystal_I2C lcd(0x27, 16, 4);  //set the LCD address to 0x
+
+
+//boolean buttonState = LOW;
+boolean buttonState = HIGH;
+//checkin the state again for exactly button
+boolean debounceButton(boolean state) {
+  boolean stateNow = digitalRead(buttonPin);
+  if (state != stateNow) {
+    delay(10);
+    stateNow = digitalRead(buttonPin);
+  }
+  return stateNow;
+}
+
+int pressed = 0;
+int cm = 0;
+int duration = 0;
+int iterations = 5;
+int distance = 0;
+int distanceRight = 0;
+int distanceLeft = 0;
+char val;
+
+//sensor pins
+#define trigger_pin A0  //analog input 1
+#define echo_pin A1     // analog input 2
+#define max_distance 600
+
+//servo
+int servo_pin = 9;
+NewPing sonar(trigger_pin, echo_pin, max_distance);  //sensor function
+Servo myservo;                                       //our servo name is myservo
+
+//int i=0, current_distance = 0;
+//int distanceLeft = 0;
+//int distanceRight = 0;
+//int position = 0; //variable to store the servo position
+//unsigned long previous_millis = 0;
+//char serialData;
+
+//Do line
+//const int L_S = 10;  // cb dò line trái
+//const int S_S = 11;  // cb dò line giữa
+//const int R_S = 12; //cb dò line phải
+
+void setup() {
+  pinMode(trigger_pin, OUTPUT);
+  pinMode(echo_pin, INPUT);
+
+
+  pinMode(motorPin1, OUTPUT);
+  pinMode(motorPin2, OUTPUT);
+  pinMode(motorPin3, OUTPUT);
+  pinMode(motorPin4, OUTPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
+  //pinMode(motor_aEnable,OUTPUT);
+  //pinMode(motor_bEnable,OUTPUT);
+  //analogWrite(motor_aEnable,200);
+  //analogWrite(motor_bEnable,200);
+  Serial.begin(9600);
+
+  lcd.init();  //initialize the lcd
+  lcd.backlight();
+
+  myservo.attach(servo_pin);  //our servor pin
+
+  myservo.write(88);  //(chayj 88 do cho thanwg)
+  delay(2000);
+}
+
+void loop() {
+  // Serial.println("Press the button to select mode");
+  // lcd.setCursor(0,0);
+  // lcd.print("Press the button to choose");
+
+  if (debounceButton(buttonState) == LOW && buttonState == HIGH) {
+    pressed++;
+    buttonState = LOW;
+  } else if (debounceButton(buttonState) == HIGH && buttonState == LOW) {
+    buttonState = HIGH;
+  }
+  if (pressed >= 3)
+    pressed = 0;
+
+  if (pressed == 2) {
+    Serial.println("Obstacle Avoiding Robot");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Obstacle Avoiding Mode");
+    obstacleAvoiding();
+  }
+
+  if (pressed == 1) {
+    Serial.println("Bluetooth Robot");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Bluetooth Mode");
+    bluetoothCar();
+  }
+
+  if (pressed == 0) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Press the button to choose");
+    Serial.println("Press the button to choose");
+    delay(100);
+  }
+}
+
+void obstacleAvoiding() {
+  distance = readPing();
+  Serial.print("Distance Ahead is: ");
+  Serial.println(distance);
+  if (distance <= 20) {
+    moveStop();
+    delay(50);
+    moveBackward();
+    delay(400);
+    moveStop();
+    delay(50);
+
+    distanceRight = lookRight();
+    Serial.print("Distance Right is: ");
+    Serial.println(distanceRight);
+    Serial.print("/ ");
+    delay(300);
+
+    distanceLeft = lookLeft();
+    Serial.print("Distance Left is: ");
+    Serial.println(distanceLeft);
+    Serial.print("");
+    delay(300);
+
+    if (distanceRight >= distanceLeft) {
+      turnRight();
+      delay(700);
+      moveStop();
+    } else {
+      turnLeft();
+      delay(700);
+      moveStop();
+    }
+  } else {
+    moveForward();
+  }
+}
+
+void bluetoothCar() {
+  if (Serial.available() > 0) {
+    val = Serial.read();
+  }
+  if (val == 'F')  //move forward
+  {
+    moveForward();
+  } else if (val == 'B')  //move backward
+  {
+    moveBackward();
+  } else if (val == 'S')  //stop moving
+  {
+    moveStop();
+  } else if (val == 'R')  //turn to right side
+  {
+    turnRight();
+  } else if (val == 'L')  //turn to left side
+  {
+    turnLeft();
+  } else if (val == 'I')  //Forward Right side
+  {
+    forwardRight();
+  } else if (val == 'J')  //Backward Right side
+  {
+    backwardRight();
+  } else if (val == 'U')  //Forward Left side
+  {
+    forwardLeft();
+  } else if (val == 'H')  //Backward Left side
+  {
+    backwardLeft();
+  }
+}
+
+int readPing()  //do khoang cach cua ultrasonic sensor
+{
+  delay(70);
+  duration = sonar.ping_median(iterations);
+  cm = (duration / 2) * 0.0343;  //convert duration into cm
+  if (cm >= 400) {
+    cm = 400;
+  }
+  if (cm < 2) {
+    cm = 400;
+  }
+  return cm;
+}
+
+int lookLeft() {
+  myservo.write(179);  //<- dieu chinh do cua servo
+  delay(500);
+  distance = readPing();
+  delay(100);
+  myservo.write(87);
+  return distance;
+  delay(100);
+}
+
+int lookRight() {
+  myservo.write(9);
+  delay(500);
+  distance = readPing();
+  delay(100);
+  return distance;
+  delay(100);
+}
+
+void moveStop() {
+  Serial.println("Move Stop");
+  lcd.setCursor(0, 1);
+  lcd.print("Move Stop");
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, LOW);
+  digitalWrite(motorPin3, LOW);
+  digitalWrite(motorPin4, LOW);
+}
+
+void moveForward() {
+  Serial.println("Move Forward");
+  lcd.setCursor(0, 1);
+  lcd.print("Move Forward");
+  digitalWrite(motorPin1, HIGH);
+  digitalWrite(motorPin2, LOW);
+  digitalWrite(motorPin3, HIGH);
+  digitalWrite(motorPin4, LOW);
+}
+
+void moveBackward() {
+  Serial.println("Move Backward");
+  lcd.setCursor(0, 1);
+  lcd.print("Move Backward");
+  digitalWrite(motorPin1, HIGH);
+  digitalWrite(motorPin2, LOW);
+  digitalWrite(motorPin3, HIGH);
+  digitalWrite(motorPin4, LOW);
+}
+
+void turnRight() {
+  Serial.println("Turn Right");
+  Serial.println("");
+  lcd.setCursor(0, 1);
+  lcd.print("Turn Right");
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, LOW);
+  digitalWrite(motorPin3, LOW);
+  digitalWrite(motorPin4, HIGH);
+}
+
+void turnLeft() {
+  Serial.println("Turn Left");
+  lcd.setCursor(0, 1);
+  lcd.print("Turn Right");
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, HIGH);
+  digitalWrite(motorPin3, LOW);
+  digitalWrite(motorPin4, LOW);
+}
+
+void forwardLeft() {
+  Serial.println("Forward Left");
+  lcd.setCursor(0, 1);
+  lcd.print("Forward Left");
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, LOW);
+  digitalWrite(motorPin3, HIGH);
+  digitalWrite(motorPin4, LOW);
+}
+
+void forwardRight() {
+  Serial.println("Forward Right");
+  lcd.setCursor(0, 1);
+  lcd.print("Forward Right");
+  digitalWrite(motorPin1, HIGH);
+  digitalWrite(motorPin2, LOW);
+  digitalWrite(motorPin3, LOW);
+  digitalWrite(motorPin4, LOW);
+}
+
+void backwardRight() {
+  Serial.println("Backward Right");
+  lcd.setCursor(0, 1);
+  lcd.print("Backward Right");
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, LOW);
+  digitalWrite(motorPin3, LOW);
+  digitalWrite(motorPin4, HIGH);
+}
+
+void backwardLeft() {
+  Serial.println("Backward Left");
+  lcd.setCursor(0, 1);
+  lcd.print("Backward Right");
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, HIGH);
+  digitalWrite(motorPin3, LOW);
+  digitalWrite(motorPin4, LOW);
+}
